@@ -12,7 +12,21 @@ namespace BGB
         private const ushort addrSize = 0x0148;
         private const ushort wild = 0x100;
 
-        private static readonly ushort[] asmNeedle = new ushort[42]
+        private static readonly ushort[] statusNeedle = new ushort[19]
+        {
+            0xF0, wild,
+            0x3C,
+            0x28, wild,
+            0xF0, 0x01,
+            0xE0, wild,
+            0xF0, wild,
+            0xE0, 0x01,
+            0xF0, wild,
+            0xFE, 0x02,
+            0x28, wild
+        };
+
+        private static readonly ushort[] dataBlockNeedle = new ushort[42]
         {
             0x21, wild, wild,
             0x11, wild, wild,
@@ -34,17 +48,29 @@ namespace BGB
 
         private ProcessMemory memory;
         private IntPtr memoryOffset;
-        private IntPtr asmSource;
-        private ushort[] asmCopy = new ushort[asmNeedle.Length];
+        private ushort[] statusCopy = new ushort[statusNeedle.Length];
+        private IntPtr statusSource;
+        private ushort hSerialConnectionStatus;
+        private ushort[] dataBlockCopy = new ushort[dataBlockNeedle.Length];
+        private IntPtr dataBlockSource;
         private ushort wSerialRandomNumberListBlock;
         private ushort wSerialPlayerDataBlock;
         private ushort wSerialPartyMonsPatchList;
+
+        public byte SerialConnectionStatus
+        {
+            get
+            {
+                CheckAddrs(statusSource, statusCopy);
+                return memory.ReadByte(Hram(hSerialConnectionStatus));
+            }
+        }
 
         public byte[] SerialRandomNumberListBlock
         {
             get
             {
-                CheckAddrs();
+                CheckAddrs(dataBlockSource, dataBlockCopy);
                 return memory.ReadBytes(Wram(wSerialRandomNumberListBlock), 0x11);
             }
         }
@@ -53,7 +79,7 @@ namespace BGB
         {
             get
             {
-                CheckAddrs();
+                CheckAddrs(dataBlockSource, dataBlockCopy);
                 return memory.ReadBytes(Wram(wSerialPlayerDataBlock), 0x1A8);
             }
         }
@@ -62,16 +88,8 @@ namespace BGB
         {
             get
             {
-                CheckAddrs();
+                CheckAddrs(dataBlockSource, dataBlockCopy);
                 return memory.ReadBytes(Wram(wSerialPartyMonsPatchList), 0xC8);
-            }
-        }
-
-        public byte SerialConnectionStatus
-        {
-            get
-            {
-                return memory.ReadByte(Hram(0xFFAA));
             }
         }
 
@@ -83,13 +101,13 @@ namespace BGB
             LoadAddrs();
         }
 
-        private void CheckAddrs()
+        private void CheckAddrs(IntPtr source, ushort[] copy)
         {
             try
             {
-                byte[] asm = memory.ReadBytes(asmSource, asmCopy.Length);
+                byte[] asm = memory.ReadBytes(source, copy.Length);
 
-                if (!MatchBytes(asm, 0, asmCopy))
+                if (!MatchBytes(asm, 0, copy))
                     throw new Exception();
             }
             catch
@@ -117,22 +135,36 @@ namespace BGB
 
             int i;
 
-            for (i = 0; i < size; i++)
-            {
-                if (MatchBytes(rom, i, asmNeedle))
-                    break;
-            }
+            if (!FindNeedle(rom, statusNeedle, out i))
+                throw new Exception("Status assembly not found.");
 
-            if (i == size)
-                throw new Exception("Serial assembly not found.");
+            Array.Copy(rom, i, statusCopy, 0, statusCopy.Length);
 
-            asmSource = IntPtr.Add(romOffset, i);
+            statusSource = IntPtr.Add(romOffset, i);
+            hSerialConnectionStatus = (ushort)(0xFF00 + rom[i + 1]);
 
-            Array.Copy(rom, i, asmCopy, 0, asmCopy.Length);
+            if (!FindNeedle(rom, dataBlockNeedle, out i))
+                throw new Exception("Datablock assembly not found.");
 
+            Array.Copy(rom, i, dataBlockCopy, 0, dataBlockCopy.Length);
+
+            dataBlockSource = IntPtr.Add(romOffset, i);
             wSerialRandomNumberListBlock = BitConverter.ToUInt16(rom, i + 1);
             wSerialPlayerDataBlock = BitConverter.ToUInt16(rom, i + 16);
             wSerialPartyMonsPatchList = BitConverter.ToUInt16(rom, i + 31);
+        }
+
+        private bool FindNeedle(byte[] haystack, ushort[] needle, out int i)
+        {
+            int length = haystack.Length;
+            
+            for (i = 0; i < length; i++)
+            {
+                if (MatchBytes(haystack, i, needle))
+                    return true;
+            }
+
+            return false;
         }
 
         private bool MatchBytes(byte[] haystack, int index, ushort[] needle)

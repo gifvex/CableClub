@@ -82,7 +82,7 @@ namespace CableClub
             try
             {
                 Log("Welcome to the Cable Club!");
-                Log("Version: b1");
+                Log("Version: b2");
                 Log("");
 
                 int port;
@@ -188,7 +188,7 @@ namespace CableClub
                     break;
 
                 case State.SendDataBlock:
-                    if (DelayFrames(30))
+                    if (DelayFrames(60))
                     {
                         byte[] data = new byte[dataBlockSize];
                         byte[] rng = gbMem.SerialRandomNumberListBlock;
@@ -272,7 +272,7 @@ namespace CableClub
                     if (SyncAndExchangeNybble(nybble))
                     {
                         if (sentNybble == 0x6F && nybble == 0x6F)
-                            SetLinkState(State.SendDataBlock);
+                            SetLinkState(State.SendDataBlockDelay);
                         else if (sentNybble == 0x6F || nybble == 0x6F)
                             SetLinkState(State.SendSelection);
                         else
